@@ -19,6 +19,8 @@ const Login = () => {
   const navigate = useNavigate();
   const showToast = useToast();
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
   const handleLogin = async (e) => {
     e.preventDefault();
     
@@ -29,7 +31,7 @@ const Login = () => {
 
     if (role === 'Admin') {
       try {
-        const response = await axios.post('http://localhost:5000/api/admin/login', {
+        const response = await axios.post(`${API_URL}/api/admin/login`, {
           adminId: studentId,
           password: pin
         });
@@ -51,7 +53,7 @@ const Login = () => {
     e.preventDefault();
     if (securityMobile.length >= 10) {
       try {
-        const response = await axios.post('http://localhost:5000/api/admin/verify-mobile', {
+        const response = await axios.post(`${API_URL}/api/admin/verify-mobile`, {
           mobileNumber: securityMobile
         });
         setRecoveryAdminId(response.data.adminId);
@@ -69,7 +71,7 @@ const Login = () => {
     e.preventDefault();
     if (newPin === confirmPin && newPin.length > 0) {
       try {
-        const response = await axios.post('http://localhost:5000/api/admin/reset-pin', {
+        const response = await axios.post(`${API_URL}/api/admin/reset-pin`, {
           adminId: recoveryAdminId,
           newPassword: newPin
         });

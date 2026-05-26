@@ -8,6 +8,9 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const showToast = useToast();
   
+  // API URL
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  
   // Navigation State
   const [activeView, setActiveView] = useState('hub');
   
@@ -44,7 +47,7 @@ const AdminDashboard = () => {
 
   const fetchStudents = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/students');
+      const response = await axios.get(`${API_URL}/api/students`);
       const mappedStudents = response.data.map(s => ({
         id: s.studentId,
         name: s.name,
@@ -63,7 +66,7 @@ const AdminDashboard = () => {
 
   const fetchAttendance = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/students/attendance/history?days=${historyDays}`);
+      const response = await axios.get(`${API_URL}/api/students/attendance/history?days=${historyDays}`);
       setMeals(response.data);
     } catch (err) {
       console.error('Failed to fetch attendance:', err);
@@ -180,7 +183,7 @@ const AdminDashboard = () => {
     }
 
     try {
-      await axios.post('http://localhost:5000/api/students/add', {
+      await axios.post(`${API_URL}/api/students/add`, {
         name: newStudent.name,
         studentId: newStudent.id,
         mobileNumber: newStudent.mobileNumber,
@@ -234,7 +237,7 @@ const AdminDashboard = () => {
     }
 
     try {
-      const response = await axios.put('http://localhost:5000/api/admin/password', {
+      const response = await axios.put(`${API_URL}/api/admin/password`, {
         adminId: passwords.adminId,
         currentPassword: passwords.current,
         newPassword: passwords.new,
@@ -259,7 +262,7 @@ const AdminDashboard = () => {
     
     if (isConfirmed) {
       try {
-        await axios.delete(`http://localhost:5000/api/students/${deleteStudentId.trim()}`);
+        await axios.delete(`${API_URL}/api/students/${deleteStudentId.trim()}`);
         showToast(`Student ${deleteStudentId.toUpperCase()} has been deleted.`);
         setDeleteStudentId('');
         fetchStudents();

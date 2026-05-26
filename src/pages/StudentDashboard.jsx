@@ -12,6 +12,8 @@ const StudentDashboard = () => {
   
   const [studentData, setStudentData] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
     const studentId = localStorage.getItem('studentId');
@@ -23,7 +25,7 @@ const StudentDashboard = () => {
 
     const fetchStudentData = async () => {
       try {
-        const response = await axios.get(`http://localhost:5000/api/students/${studentId}`);
+        const response = await axios.get(`${API_URL}/api/students/${studentId}`);
         const dataToSet = response.data.student ? response.data.student : response.data;
         setStudentData(dataToSet);
       } catch (error) {
@@ -54,7 +56,7 @@ const StudentDashboard = () => {
   const handleClaimMeal = async () => {
     setIsClaiming(true);
     try {
-      const response = await axios.post('http://localhost:5000/api/students/claim-meal', {
+      const response = await axios.post(`${API_URL}/api/students/claim-meal`, {
         studentId: localStorage.getItem('studentId'),
         name: studentData?.name || 'Student',
         mealType: 'Meal Claim'
