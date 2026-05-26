@@ -10,14 +10,17 @@ app.use(cors());
 app.use(express.json()); 
 // Import Routes
 const studentRoutes = require('./routes/studentRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Use Routes
 app.use('/api/students', studentRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Environment Variables
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mess-management'; 
-
+// Bypassing mongodb+srv:// due to Windows DNS SRV bug. Using direct replica set nodes.
+const MONGO_URI = 'mongodb://messAdmin:MessAdmin2026@ac-dxwpuzy-shard-00-00.m12kmcq.mongodb.net:27017,ac-dxwpuzy-shard-00-01.m12kmcq.mongodb.net:27017,ac-dxwpuzy-shard-00-02.m12kmcq.mongodb.net:27017/MessApp?ssl=true&replicaSet=atlas-xk1ssp-shard-0&authSource=admin&appName=MessManagementSystem';
+console.log("Connecting to:", MONGO_URI);
 // Database Connection
 mongoose.connect(MONGO_URI)
   .then(() => console.log('Successfully connected to MongoDB'))

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { useToast } from '../context/ToastContext';
 import './Login.css';
 
@@ -8,58 +9,82 @@ const Login = () => {
   const [pin, setPin] = useState('');
   const [role, setRole] = useState('Student');
   
-  // Recovery Mode State
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [recoveryStage, setRecoveryStage] = useState(1);
   const [securityMobile, setSecurityMobile] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
+  const [recoveryAdminId, setRecoveryAdminId] = useState('');
 
   const navigate = useNavigate();
   const showToast = useToast();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     
-    // Mock validation
     if (!studentId || (role === 'Admin' && !pin)) {
-      alert("Please fill in all required fields.");
+      showToast("Please fill in all required fields.");
       return;
     }
 
-    showToast(`Welcome back, ${role}!`);
-
-    // Mock redirect
-    if (role === 'Student') {
+    if (role === 'Admin') {
+      try {
+        const response = await axios.post('http://localhost:5000/api/admin/login', {
+          adminId: studentId,
+          password: pin
+        });
+        showToast(response.data.message);
+        localStorage.setItem('adminId', response.data.adminId);
+        navigate('/admin');
+      } catch (err) {
+        showToast(err.response?.data?.message || 'Login failed');
+      }
+    } else {
+      showToast(`Welcome back, Student!`);
       localStorage.setItem('studentId', studentId);
       localStorage.setItem('name', studentId);
       navigate('/student');
-    } else {
-      navigate('/admin');
     }
   };
 
-  const handleVerifyMobile = (e) => {
+  const handleVerifyMobile = async (e) => {
     e.preventDefault();
     if (securityMobile.length >= 10) {
-      setRecoveryStage(2);
-      showToast('Mobile verified. Enter new PIN.');
+      try {
+        const response = await axios.post('http://localhost:5000/api/admin/verify-mobile', {
+          mobileNumber: securityMobile
+        });
+        setRecoveryAdminId(response.data.adminId);
+        setRecoveryStage(2);
+        showToast('Mobile verified. Enter new PIN.');
+      } catch (err) {
+        showToast(err.response?.data?.message || 'Verification failed. Mobile not found.');
+      }
     } else {
       showToast('Please enter a valid 10-digit mobile number.');
     }
   };
 
-  const handleResetPin = (e) => {
+  const handleResetPin = async (e) => {
     e.preventDefault();
     if (newPin === confirmPin && newPin.length > 0) {
-      showToast('Admin PIN reset successfully');
-      setIsRecoveryMode(false);
-      setRecoveryStage(1);
-      setSecurityMobile('');
-      setNewPin('');
-      setConfirmPin('');
+      try {
+        const response = await axios.post('http://localhost:5000/api/admin/reset-pin', {
+          adminId: recoveryAdminId,
+          newPassword: newPin
+        });
+        showToast(response.data.message);
+        setIsRecoveryMode(false);
+        setRecoveryStage(1);
+        setSecurityMobile('');
+        setNewPin('');
+        setConfirmPin('');
+        setRecoveryAdminId('');
+      } catch (err) {
+        showToast(err.response?.data?.message || 'Failed to reset PIN.');
+      }
     } else {
-      showToast('PINs do not match!');
+      showToast('PINs do not match or are empty!');
     }
   };
 

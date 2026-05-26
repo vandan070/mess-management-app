@@ -1,31 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { useToast } from '../context/ToastContext';
 import './AdminDashboard.css';
-
-const INITIAL_MOCK_STUDENTS = [
-  { id: 'S1001', name: 'Alice Smith', status: 'Paid', expiry: '2026-06-10' },
-  { id: 'S1002', name: 'Bob Jones', status: 'Pending', expiry: '2026-05-25' },
-  { id: 'S1003', name: 'Charlie Brown', status: 'Paid', expiry: '2026-06-15' },
-  { id: 'S1004', name: 'Diana Prince', status: 'Overdue', expiry: '2026-05-20' },
-  { id: 'S1005', name: 'Evan Davis', status: 'Paid', expiry: '2026-06-30' },
-];
-
-const INITIAL_MOCK_MEALS = [
-  { id: 1, studentId: 'S1001', name: 'Alice Smith', time: '08:15 AM', type: 'Breakfast' },
-  { id: 2, studentId: 'S1003', name: 'Charlie Brown', time: '08:20 AM', type: 'Breakfast' },
-  { id: 3, studentId: 'S1005', name: 'Evan Davis', time: '08:45 AM', type: 'Breakfast' },
-  { id: 4, studentId: 'S1001', name: 'Alice Smith', time: '01:10 PM', type: 'Lunch' },
-  { id: 5, studentId: 'S1002', name: 'Bob Jones', time: '01:30 PM', type: 'Lunch' },
-];
-
-const INITIAL_STUDENT_ROSTER = [
-  { name: 'Alice Smith', id: 'S1001', joinDate: '2025-08-15', lastPayment: '2026-05-10', daysLeft: 15, status: 'Paid' },
-  { name: 'Bob Jones', id: 'S1002', joinDate: '2026-01-10', lastPayment: '2026-04-25', daysLeft: -1, status: 'Pending' },
-  { name: 'Charlie Brown', id: 'S1003', joinDate: '2025-09-01', lastPayment: '2026-05-15', daysLeft: 20, status: 'Paid' },
-  { name: 'Diana Prince', id: 'S1004', joinDate: '2026-02-14', lastPayment: '2026-04-20', daysLeft: -6, status: 'Overdue' },
-  { name: 'Evan Davis', id: 'S1005', joinDate: '2025-11-20', lastPayment: '2026-05-30', daysLeft: 35, status: 'Paid' },
-];
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -35,8 +12,9 @@ const AdminDashboard = () => {
   const [activeView, setActiveView] = useState('hub');
   
   // Data States
-  const [students, setStudents] = useState(INITIAL_MOCK_STUDENTS);
-  const [meals, setMeals] = useState(INITIAL_MOCK_MEALS);
+  const [students, setStudents] = useState([]);
+  const [meals, setMeals] = useState([]);
+  const [historyDays, setHistoryDays] = useState(0);
 
   // Ledger Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,17 +25,61 @@ const AdminDashboard = () => {
   const [attendanceSearchBy, setAttendanceSearchBy] = useState('Student ID');
 
   // Student Log (Roster) State
-  const [roster, setRoster] = useState(INITIAL_STUDENT_ROSTER);
   const [rosterSearch, setRosterSearch] = useState('');
   const [rosterStatusFilter, setRosterStatusFilter] = useState('All');
 
+  useEffect(() => {
+    const adminId = localStorage.getItem('adminId');
+    if (!adminId) {
+      showToast('Unauthorized. Please login as Admin.');
+      navigate('/');
+      return;
+    }
+    fetchStudents();
+  }, []);
+
+  useEffect(() => {
+    fetchAttendance();
+  }, [historyDays]);
+
+  const fetchStudents = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/students');
+      const mappedStudents = response.data.map(s => ({
+        id: s.studentId,
+        name: s.name,
+        status: s.paymentStatus,
+        expiry: s.subscriptionEndDate ? new Date(s.subscriptionEndDate).toLocaleDateString() : 'N/A',
+        mobileNumber: s.mobileNumber || 'N/A',
+        // Mock derived fields for roster
+        joinDate: new Date(s.createdAt || Date.now()).toLocaleString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute:'2-digit' }),
+        daysLeft: Math.ceil((new Date(s.subscriptionEndDate) - new Date()) / (1000 * 60 * 60 * 24)) || 0
+      }));
+      setStudents(mappedStudents);
+    } catch (err) {
+      console.error('Failed to fetch students:', err);
+    }
+  };
+
+  const fetchAttendance = async () => {
+    try {
+      const response = await axios.get(`http://localhost:5000/api/students/attendance/history?days=${historyDays}`);
+      setMeals(response.data);
+    } catch (err) {
+      console.error('Failed to fetch attendance:', err);
+    }
+  };
+
   // Add Student State
   const [newStudent, setNewStudent] = useState({
-    id: '', expiry: '', status: 'Pending'
+    name: '', id: '', mobileNumber: '', expiry: '', status: 'Pending'
   });
 
   // Change Password State
-  const [passwords, setPasswords] = useState({ current: '', new: '' });
+  const [passwords, setPasswords] = useState({ adminId: '', current: '', new: '', mobile: '' });
+
+  // Delete Student State
+  const [deleteStudentId, setDeleteStudentId] = useState('');
 
   const filteredStudents = students.filter(student => {
     const matchesSearch = student.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -74,7 +96,7 @@ const AdminDashboard = () => {
 
   const filteredAttendance = filterMeals(meals, attendanceSearch, attendanceSearchBy);
   
-  const filteredRoster = roster.filter(student => {
+  const filteredRoster = students.filter(student => {
     const matchesSearch = student.name.toLowerCase().includes(rosterSearch.toLowerCase()) || 
                           student.id.toLowerCase().includes(rosterSearch.toLowerCase());
     const matchesStatus = rosterStatusFilter === 'All' || student.status === rosterStatusFilter;
@@ -82,35 +104,99 @@ const AdminDashboard = () => {
   });
 
   const handleDownloadCSV = () => {
-    const headers = 'Student ID,Name,Time,Meal Type\n';
-    const rows = meals.map(meal => `${meal.studentId},${meal.name},${meal.time},${meal.type}`).join('\n');
+    const todayStr = new Date().toLocaleDateString();
+    const todaysMeals = meals.filter(meal => {
+       const mDate = meal.date ? new Date(meal.date).toLocaleDateString() : todayStr;
+       return mDate === todayStr;
+    });
+    
+    if (todaysMeals.length === 0) {
+      showToast('No check-ins found for today to download.');
+      return;
+    }
+
+    const headers = 'Student ID,Name,Time,Meal Type,Date\n';
+    const rows = todaysMeals.map(meal => {
+      const mDate = meal.date ? new Date(meal.date).toLocaleDateString() : todayStr;
+      return `${meal.studentId},${meal.name},${meal.time},${meal.type},${mDate}`;
+    }).join('\n');
     const csvContent = headers + rows;
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'attendance_report.csv');
+    link.setAttribute('download', `attendance_today_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('Attendance report downloaded successfully!');
+    showToast(`Downloaded today's attendance (${todaysMeals.length} records)!`);
   };
 
-  const handleSaveStudent = (e) => {
+  const handleDownloadCSVForDate = (dateStr, dateMeals) => {
+    if (!dateMeals || dateMeals.length === 0) {
+      showToast(`No check-ins found for ${dateStr} to download.`);
+      return;
+    }
+
+    const headers = 'Student ID,Name,Time,Meal Type,Date\n';
+    const rows = dateMeals.map(meal => {
+      const mDate = meal.date ? new Date(meal.date).toLocaleDateString() : dateStr;
+      return `${meal.studentId},${meal.name},${meal.time},${meal.type},${mDate}`;
+    }).join('\n');
+    const csvContent = headers + rows;
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    const safeDate = dateStr.replace(/\//g, '-');
+    link.setAttribute('download', `attendance_${safeDate}.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Downloaded attendance for ${dateStr === new Date().toLocaleDateString() ? 'Today' : dateStr} (${dateMeals.length} records)!`);
+  };
+
+  const groupMealsByDate = (mealsToGroup) => {
+    const grouped = {};
+    mealsToGroup.forEach(meal => {
+      const dateStr = meal.date ? new Date(meal.date).toLocaleDateString() : new Date().toLocaleDateString();
+      if (!grouped[dateStr]) grouped[dateStr] = [];
+      grouped[dateStr].push(meal);
+    });
+    return Object.keys(grouped)
+      .sort((a, b) => new Date(b) - new Date(a))
+      .map(date => ({ date, meals: grouped[date] }));
+  };
+
+  const handleSaveStudent = async (e) => {
     e.preventDefault();
-    if (!newStudent.id || !newStudent.expiry) return;
+    if (!newStudent.name || !newStudent.id || !newStudent.mobileNumber || !newStudent.expiry) {
+      showToast('Please fill all required fields');
+      return;
+    }
 
-    setStudents([...students, {
-      id: newStudent.id,
-      name: 'New Student',
-      status: newStudent.status,
-      expiry: newStudent.expiry
-    }]);
+    try {
+      await axios.post('http://localhost:5000/api/students/add', {
+        name: newStudent.name,
+        studentId: newStudent.id,
+        mobileNumber: newStudent.mobileNumber,
+        subscriptionEndDate: newStudent.expiry,
+        paymentStatus: newStudent.status
+      });
 
-    setNewStudent({ id: '', expiry: '', status: 'Pending' });
-    showToast('Student added successfully!');
-    setActiveView('Payments');
+      fetchStudents();
+
+      setNewStudent({ name: '', id: '', mobileNumber: '', expiry: '', status: 'Pending' });
+      showToast('Student added successfully!');
+      setActiveView('Payments');
+    } catch (error) {
+      console.error('Error adding student:', error);
+      showToast('Failed to add student. Ensure ID is unique.');
+    }
   };
 
   const handleStatusChange = (studentId, newStatus) => {
@@ -140,11 +226,48 @@ const AdminDashboard = () => {
     showToast('Meal removed manually');
   };
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (!passwords.current || !passwords.new) return;
-    showToast('Admin password updated successfully');
-    setPasswords({ current: '', new: '' });
+    if (!passwords.adminId || !passwords.current || !passwords.new) {
+      showToast('Please fill required fields');
+      return;
+    }
+
+    try {
+      const response = await axios.put('http://localhost:5000/api/admin/password', {
+        adminId: passwords.adminId,
+        currentPassword: passwords.current,
+        newPassword: passwords.new,
+        mobileNumber: passwords.mobile || undefined
+      });
+      showToast(response.data.message);
+      setPasswords({ adminId: '', current: '', new: '', mobile: '' });
+    } catch (error) {
+      console.error('Error changing password:', error);
+      showToast(error.response?.data?.message || 'Failed to update password');
+    }
+  };
+
+  const handleDeleteStudent = async (e) => {
+    e.preventDefault();
+    if (!deleteStudentId.trim()) {
+      showToast('Please enter a Student ID');
+      return;
+    }
+
+    const isConfirmed = window.confirm(`Are you absolutely sure you want to permanently delete Student ${deleteStudentId.toUpperCase()}? This action cannot be undone.`);
+    
+    if (isConfirmed) {
+      try {
+        await axios.delete(`http://localhost:5000/api/students/${deleteStudentId.trim()}`);
+        showToast(`Student ${deleteStudentId.toUpperCase()} has been deleted.`);
+        setDeleteStudentId('');
+        fetchStudents();
+      } catch (error) {
+        console.error('Error deleting student:', error);
+        showToast('Failed to delete student. They may not exist.');
+      }
+    }
   };
 
   const renderBackButton = () => (
@@ -197,7 +320,7 @@ const AdminDashboard = () => {
             <option value="All">All</option>
             <option value="Paid">Paid</option>
             <option value="Pending">Pending</option>
-            <option value="Overdue">Overdue</option>
+            <option value="Partially Paid">Partially Paid</option>
           </select>
           <input 
             type="text" 
@@ -227,13 +350,13 @@ const AdminDashboard = () => {
                   <td>{student.name}</td>
                   <td>
                     <select 
-                      className={`status-badge status-select status-${student.status.toLowerCase()}`}
+                      className={`status-badge status-select status-${student.status.toLowerCase().replace(' ', '-')}`}
                       value={student.status}
                       onChange={(e) => handleStatusChange(student.id, e.target.value)}
                     >
                       <option value="Paid">Paid</option>
                       <option value="Pending">Pending</option>
-                      <option value="Overdue">Overdue</option>
+                      <option value="Partially Paid">Partially Paid</option>
                     </select>
                   </td>
                   <td>{student.expiry}</td>
@@ -270,8 +393,17 @@ const AdminDashboard = () => {
         </div>
 
         <div className="section-header">
-          <h3 className="section-title" style={{ fontSize: '1.25rem' }}>Today's Check-ins</h3>
+          <h3 className="section-title" style={{ fontSize: '1.25rem' }}>Attendance History</h3>
           <div className="header-actions">
+            <select
+              className="input-field select-field"
+              style={{ width: '150px', backgroundColor: 'var(--primary-color)', color: 'white' }}
+              value={historyDays}
+              onChange={(e) => setHistoryDays(Number(e.target.value))}
+            >
+              <option value={0}>Today</option>
+              <option value={10}>Past 10 Days</option>
+            </select>
             <select 
               className="input-field select-field" 
               style={{ width: '150px' }}
@@ -303,22 +435,40 @@ const AdminDashboard = () => {
             </thead>
             <tbody>
               {filteredAttendance.length > 0 ? (
-                filteredAttendance.map((meal) => (
-                  <tr key={meal.id}>
-                    <td>{meal.name}</td>
-                    <td>{meal.studentId}</td>
-                    <td>{meal.time}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => handleAddMeal(meal.studentId, meal.name)}>
-                          + Add Meal
-                        </button>
-                        <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }} onClick={() => handleRemoveMeal(meal.id)}>
-                          - Remove Meal
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                groupMealsByDate(filteredAttendance).map((group) => (
+                  <React.Fragment key={group.date}>
+                    <tr style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)', fontWeight: 'bold', color: 'var(--primary-color)' }}>
+                      <td colSpan="4" style={{ textAlign: 'left', padding: '12px 24px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>{group.date === new Date().toLocaleDateString() ? 'Today' : group.date}</span>
+                          <button 
+                            className="btn-secondary" 
+                            style={{ padding: '4px 12px', fontSize: '0.8rem', backgroundColor: 'var(--bg-card)' }} 
+                            onClick={() => handleDownloadCSVForDate(group.date, group.meals)}
+                          >
+                            &#x2B07; Download CSV
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {group.meals.map((meal) => (
+                      <tr key={meal.id || meal._id}>
+                        <td>{meal.name}</td>
+                        <td>{meal.studentId}</td>
+                        <td>{meal.time}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => handleAddMeal(meal.studentId, meal.name)}>
+                              + Add Meal
+                            </button>
+                            <button className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }} onClick={() => handleRemoveMeal(meal.id || meal._id)}>
+                              - Remove Meal
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 ))
               ) : (
                 <tr>
@@ -339,14 +489,36 @@ const AdminDashboard = () => {
         <h2 className="section-title">Add New Student</h2>
         <form onSubmit={handleSaveStudent} className="modal-form" style={{ marginTop: '24px' }}>
           <div className="input-group">
+            <label>Student Name</label>
+            <input 
+              type="text" 
+              className="input-field" 
+              required
+              placeholder="Enter your name"
+              value={newStudent.name}
+              onChange={(e) => setNewStudent({...newStudent, name: e.target.value})}
+            />
+          </div>
+          <div className="input-group">
             <label>Student ID</label>
             <input 
               type="text" 
               className="input-field" 
               required
-              placeholder="e.g. S1006"
+              placeholder="Enter id"
               value={newStudent.id}
               onChange={(e) => setNewStudent({...newStudent, id: e.target.value})}
+            />
+          </div>
+          <div className="input-group">
+            <label>Mobile Number</label>
+            <input 
+              type="text" 
+              className="input-field" 
+              required
+              placeholder="Enter mobile no"
+              value={newStudent.mobileNumber}
+              onChange={(e) => setNewStudent({...newStudent, mobileNumber: e.target.value})}
             />
           </div>
           <div className="input-group">
@@ -368,7 +540,7 @@ const AdminDashboard = () => {
             >
               <option value="Paid">Paid</option>
               <option value="Pending">Pending</option>
-              <option value="Overdue">Overdue</option>
+              <option value="Partially Paid">Partially Paid</option>
             </select>
           </div>
           <div style={{ marginTop: '24px' }}>
@@ -407,7 +579,7 @@ const AdminDashboard = () => {
               <option value="All">All</option>
               <option value="Paid">Paid</option>
               <option value="Pending">Pending</option>
-              <option value="Overdue">Overdue</option>
+              <option value="Partially Paid">Partially Paid</option>
             </select>
             <input 
               type="text" 
@@ -425,8 +597,8 @@ const AdminDashboard = () => {
               <tr>
                 <th>Name</th>
                 <th>Student ID</th>
-                <th>Joining Date</th>
-                <th>Last Payment</th>
+                <th>Mobile Number</th>
+                <th>Joining Date & Time</th>
                 <th>Days Left</th>
                 <th>Status</th>
               </tr>
@@ -437,11 +609,11 @@ const AdminDashboard = () => {
                   <tr key={index}>
                     <td>{student.name}</td>
                     <td>{student.id}</td>
+                    <td>{student.mobileNumber}</td>
                     <td>{student.joinDate}</td>
-                    <td>{student.lastPayment}</td>
                     <td>{student.daysLeft}</td>
                     <td>
-                      <span className={`status-badge status-${student.status.toLowerCase()}`} style={{ padding: '4px 12px', display: 'inline-block' }}>
+                      <span className={`status-badge status-${student.status.toLowerCase().replace(' ', '-')}`} style={{ padding: '4px 12px', display: 'inline-block' }}>
                         {student.status}
                       </span>
                     </td>
@@ -468,6 +640,17 @@ const AdminDashboard = () => {
         
         <form onSubmit={handleChangePassword} className="modal-form" style={{ marginTop: '24px' }}>
           <div className="input-group">
+            <label>Admin ID</label>
+            <input 
+              type="text" 
+              className="input-field" 
+              required
+              placeholder="Enter Admin ID"
+              value={passwords.adminId}
+              onChange={(e) => setPasswords({...passwords, adminId: e.target.value})}
+            />
+          </div>
+          <div className="input-group">
             <label>Current Password</label>
             <input 
               type="password" 
@@ -489,9 +672,48 @@ const AdminDashboard = () => {
               onChange={(e) => setPasswords({...passwords, new: e.target.value})}
             />
           </div>
+          <div className="input-group">
+            <label>Update Mobile Number (Optional) Else old one is used for verification</label>
+            <input 
+              type="text" 
+              className="input-field" 
+              placeholder="Enter new 10-digit number"
+              value={passwords.mobile}
+              onChange={(e) => setPasswords({...passwords, mobile: e.target.value})}
+            />
+          </div>
           <div style={{ marginTop: '24px' }}>
             <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '12px 32px' }}>
               Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+
+  const renderDeleteStudent = () => (
+    <section className="glass-panel admin-section fade-in">
+      {renderBackButton()}
+      <div style={{ marginTop: '24px', maxWidth: '500px' }}>
+        <h2 className="section-title" style={{ color: '#ef4444' }}>Delete Student</h2>
+        <p className="section-desc">Permanently remove a student from the database.</p>
+        
+        <form onSubmit={handleDeleteStudent} className="modal-form" style={{ marginTop: '24px' }}>
+          <div className="input-group">
+            <label>Student ID to Delete</label>
+            <input 
+              type="text" 
+              className="input-field" 
+              required
+              placeholder="Enter Student ID"
+              value={deleteStudentId}
+              onChange={(e) => setDeleteStudentId(e.target.value)}
+            />
+          </div>
+          <div style={{ marginTop: '24px' }}>
+            <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '12px 32px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderColor: '#ef4444' }}>
+              Delete Student
             </button>
           </div>
         </form>
@@ -516,7 +738,7 @@ const AdminDashboard = () => {
       case 'AddStudent': return renderAddStudent();
       case 'StudentLog': return renderStudentLog();
       case 'ChangeAdminPass': return renderChangeAdminPass();
-      case 'DeleteStudent': return renderPlaceholder('Delete Student');
+      case 'DeleteStudent': return renderDeleteStudent();
       default: return renderHub();
     }
   };
@@ -530,7 +752,10 @@ const AdminDashboard = () => {
             {activeView === 'hub' ? 'Central Management Hub' : `Managing ${activeView}`}
           </p>
         </div>
-        <button className="btn-secondary" onClick={() => navigate('/')}>
+        <button className="btn-secondary" onClick={() => {
+          localStorage.removeItem('adminId');
+          navigate('/');
+        }}>
           Logout
         </button>
       </header>

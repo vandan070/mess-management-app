@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const studentSchema = new mongoose.Schema({
   name: { type: String, required: true },
   studentId: { type: String, required: true, unique: true },
+  mobileNumber: { type: String, required: true },
   
   // Financial Tracking
   joiningDate: { type: Date, default: Date.now },
@@ -10,7 +11,7 @@ const studentSchema = new mongoose.Schema({
   subscriptionEndDate: { type: Date, required: true },
   paymentStatus: { 
     type: String, 
-    enum: ['Paid', 'Pending', 'Overdue'], 
+    enum: ['Paid', 'Pending', 'Partially Paid'], 
     default: 'Pending' 
   },
   

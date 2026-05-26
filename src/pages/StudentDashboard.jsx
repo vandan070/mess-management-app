@@ -24,9 +24,6 @@ const StudentDashboard = () => {
     const fetchStudentData = async () => {
       try {
         const response = await axios.get(`http://localhost:5000/api/students/${studentId}`);
-        console.log('Backend Response:', response.data);
-        
-        // Handle potential nesting if the backend wraps the document in a 'student' property
         const dataToSet = response.data.student ? response.data.student : response.data;
         setStudentData(dataToSet);
       } catch (error) {
@@ -54,15 +51,14 @@ const StudentDashboard = () => {
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
-  const handleClaimMeal = () => {
+  const handleClaimMeal = async () => {
     setIsClaiming(true);
-    // Simulate API call delay
-    setTimeout(() => {
-      // Mock API Response
-      const mockResponse = {
-        success: true,
-        warning: 'Warning: Subscription expires soon.'
-      };
+    try {
+      const response = await axios.post('http://localhost:5000/api/students/claim-meal', {
+        studentId: localStorage.getItem('studentId'),
+        name: studentData?.name || 'Student',
+        mealType: 'Meal Claim'
+      });
 
       setIsClaiming(false);
       setHasClaimed(true);
@@ -70,10 +66,7 @@ const StudentDashboard = () => {
       let countdown = 5;
       
       const updateToastMessage = (timeLeft) => {
-        const baseMsg = mockResponse.warning 
-          ? `⚠️ ${mockResponse.warning} - ` 
-          : 'Meal claimed! ';
-        showToast(`${baseMsg}Redirecting in ${timeLeft}...`, 1500);
+        showToast(`Meal claimed successfully! Redirecting in ${timeLeft}...`, 1500);
       };
 
       updateToastMessage(countdown);
@@ -87,7 +80,11 @@ const StudentDashboard = () => {
           updateToastMessage(countdown);
         }
       }, 1000);
-    }, 1000);
+    } catch (error) {
+      console.error('Error claiming meal:', error);
+      showToast('Failed to claim meal. Please try again.');
+      setIsClaiming(false);
+    }
   };
 
   if (loading) {
